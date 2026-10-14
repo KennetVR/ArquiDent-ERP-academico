@@ -22,10 +22,12 @@ public class ErpSecurityFilter implements Filter {
         s.setHeader("X-Content-Type-Options","nosniff"); s.setHeader("X-Frame-Options","DENY");
         s.setHeader("Referrer-Policy","same-origin");
         String path=r.getServletPath();
-        if((path.startsWith("/css/") || LOGOS.contains(path)) && "GET".equals(r.getMethod())) {
+        boolean fuente=path.startsWith("/assets/") && path.endsWith(".woff2");
+        boolean estilo=path.startsWith("/css/") || (path.startsWith("/assets/") && path.endsWith(".css"));
+        if((estilo || fuente || LOGOS.contains(path)) && "GET".equals(r.getMethod())) {
             try (java.io.InputStream in=ctx.getResourceAsStream(path)) {
                 if(in==null) { s.sendError(404); return; }
-                s.setContentType(LOGOS.contains(path)?"image/png":"text/css; charset=UTF-8");
+                s.setContentType(LOGOS.contains(path)?"image/png":fuente?"font/woff2":"text/css; charset=UTF-8");
                 try (java.io.OutputStream out=s.getOutputStream()) { in.transferTo(out); }
             }
             return;

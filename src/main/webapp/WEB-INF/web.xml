@@ -43,5 +43,6 @@
   <error-page><error-code>503</error-code><location>/WEB-INF/views/erp/error.jsp</location></error-page>
   <mime-mapping><extension>css</extension><mime-type>text/css</mime-type></mime-mapping>
   <mime-mapping><extension>png</extension><mime-type>image/png</mime-type></mime-mapping>
+  <mime-mapping><extension>woff2</extension><mime-type>font/woff2</mime-type></mime-mapping>
   <listener><listener-class>pe.edu.utp.listener.DatabaseCleanupListener</listener-class></listener>
 </web-app>

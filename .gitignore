@@ -9,5 +9,6 @@
 /backups/
 /test.txt
 /nbproject/private/
+node_modules/
 *.log
 *.sql.bak
