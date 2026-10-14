@@ -1,0 +1,37 @@
+name: arquident-demo
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: arquidentdb
+      MYSQL_USER: arquident
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Ejecute scripts/configurar-docker.ps1 o complete .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Falta MYSQL_ROOT_PASSWORD en .env}
+      TZ: America/Lima
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_ROOT_PASSWORD}\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+    restart: unless-stopped
+  web:
+    build: .
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+    environment:
+      ARQ_DB_URL: "jdbc:mysql://db:3306/arquidentdb?serverTimezone=America/Lima&useSSL=false&allowPublicKeyRetrieval=true"
+      ARQ_DB_USER: arquident
+      ARQ_DB_PASSWORD: ${MYSQL_PASSWORD:?Falta MYSQL_PASSWORD en .env}
+      FD_DEMO_ENABLED: ${FD_DEMO_ENABLED:-true}
+      FD_DEMO_SERIE: ${FD_DEMO_SERIE:?Falta una serie B de cuatro caracteres en .env}
+      TZ: America/Lima
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  mysql-data:

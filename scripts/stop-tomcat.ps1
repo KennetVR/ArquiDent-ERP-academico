@@ -41,6 +41,7 @@ if (-not $env:JAVA_HOME -or -not (Test-Path (Join-Path $env:JAVA_HOME 'bin\java.
 
 if (-not $CatalinaHome) {
     $patterns = @(
+        (Join-Path (Split-Path -Parent $PSScriptRoot) '.runtime\tomcat9'),
         'C:\Program Files\Apache Software Foundation\Tomcat 9.0*',
         'C:\apache-tomcat-9*',
         "$env:LOCALAPPDATA\Temp\opencode\tomcat9\apache-tomcat-9*"

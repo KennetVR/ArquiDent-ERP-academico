@@ -55,6 +55,7 @@ if (-not (Test-Path $localConfig)) {
     throw "Falta config/local.ps1. Copia config/ejemplo-windows.ps1 a config/local.ps1 y completa ARQ_DB_URL/USER/PASSWORD."
 }
 . $localConfig
+if (-not $CatalinaHome) { $CatalinaHome = $env:CATALINA_HOME }
 foreach ($v in 'ARQ_DB_URL', 'ARQ_DB_USER', 'ARQ_DB_PASSWORD') {
     if (-not (Get-Item "env:$v" -ErrorAction SilentlyContinue)) {
         throw "config/local.ps1 debe definir $v."
@@ -82,6 +83,7 @@ Write-Step "JAVA_HOME = $env:JAVA_HOME"
 # --- 3) Tomcat 9 -------------------------------------------------------------
 if (-not $CatalinaHome) {
     $patterns = @(
+        (Join-Path $root '.runtime\tomcat9'),
         'C:\Program Files\Apache Software Foundation\Tomcat 9.0*',
         'C:\apache-tomcat-9*',
         "$env:LOCALAPPDATA\Temp\opencode\tomcat9\apache-tomcat-9*"
@@ -101,7 +103,25 @@ $env:CATALINA_BASE = $CatalinaHome
 $catalina = Join-Path $CatalinaHome 'bin\catalina.bat'
 Write-Step "Tomcat = $CatalinaHome"
 
-# --- 4) Compilar y desplegar (opcional) --------------------------------------
+# --- 4) Comprobar puerto antes de modificar el despliegue --------------------
+function Get-Port8080Pid {
+    try {
+        $c = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction Stop
+        return [int]($c | Select-Object -First 1).OwningProcess
+    } catch {
+        $line = netstat -ano | Select-String '^\s*TCP\s+\S+:8080\s+\S+\s+LISTENING\s+[1-9][0-9]*\s*$' | Select-Object -First 1
+        if ($line) { return [int](($line.Line.Trim() -split '\s+')[-1]) }
+        return $null
+    }
+}
+$busy = Get-Port8080Pid
+if ($busy) {
+    if ($Build) { throw "Detenga Tomcat con scripts/stop-tomcat.ps1 antes de usar -Build (PID $busy)." }
+    Write-Host "El puerto 8080 ya esta activo (PID $busy)."
+    return
+}
+
+# --- 5) Compilar y desplegar (opcional) --------------------------------------
 if ($Build) {
     if (-not $Maven) {
         $cmd = Get-Command mvn.cmd -ErrorAction SilentlyContinue
@@ -122,23 +142,6 @@ if ($Build) {
     Write-Step "WAR desplegado en $CatalinaHome\webapps\arquident.war"
 }
 
-# --- 5) Comprobar puerto 8080 ------------------------------------------------
-function Get-Port8080Pid {
-    try {
-        $c = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction Stop
-        return [int]($c | Select-Object -First 1).OwningProcess
-    } catch {
-        $line = netstat -ano | Select-String '^\s*TCP\s+\S+:8080\s+\S+\s+LISTENING\s+[1-9][0-9]*\s*$' | Select-Object -First 1
-        if ($line) { return [int](($line.Line.Trim() -split '\s+')[-1]) }
-        return $null
-    }
-}
-$busy = Get-Port8080Pid
-if ($busy) {
-    Write-Warning "El puerto 8080 ya está en uso (PID $busy). Es posible que Tomcat ya esté en marcha; use scripts/stop-tomcat.ps1 primero."
-    return
-}
-
 # --- 6) Arrancar -------------------------------------------------------------
 Write-Step 'Iniciando Tomcat...'
 if ($Foreground) {
@@ -151,20 +154,17 @@ Start-Process -FilePath 'cmd.exe' `
     -WorkingDirectory (Join-Path $CatalinaHome 'bin') `
     -WindowStyle Hidden | Out-Null
 
-$deadline = (Get-Date).AddSeconds(60)
-while ((Get-Date) -lt $deadline -and -not (Get-Port8080Pid)) { Start-Sleep -Seconds 2 }
-if (-not (Get-Port8080Pid)) {
-    Write-Warning "Tomcat no abrió el puerto 8080 en 60s. Revise $CatalinaHome\logs\catalina.*.log"
-    return
-}
-
-Start-Sleep -Seconds 2
-try {
-    $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/arquident/inicio' -UseBasicParsing -TimeoutSec 20
-    Write-Host "Tomcat arrancado. /inicio -> $($r.StatusCode)" -ForegroundColor Green
-    Write-Host 'App:   http://127.0.0.1:8080/arquident/inicio'
-    Write-Host "Logs:  $CatalinaHome\logs"
-} catch {
-    $code = $_.Exception.Response.StatusCode.value__
-    Write-Warning "Tomcat responde con $code. Si es 503, revise config/local.ps1 (base de datos) y que MySQL esté arriba."
-}
+$deadline = (Get-Date).AddSeconds(90)
+do {
+    try {
+        $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/arquident/servicios' -UseBasicParsing -TimeoutSec 5
+        if ($r.StatusCode -eq 200) {
+            Write-Host 'Tomcat y base de datos listos.' -ForegroundColor Green
+            Write-Host 'App:   http://127.0.0.1:8080/arquident/inicio'
+            Write-Host "Logs:  $CatalinaHome\logs"
+            return
+        }
+    } catch { }
+    Start-Sleep -Seconds 2
+} while ((Get-Date) -lt $deadline)
+throw "La aplicacion no estuvo lista en 90s. Revise MySQL, config/local.ps1 y $CatalinaHome\logs."

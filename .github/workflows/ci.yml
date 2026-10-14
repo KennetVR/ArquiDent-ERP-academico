@@ -1,0 +1,51 @@
+name: Compilar y probar
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test-root
+          MYSQL_DATABASE: arquident_cpe_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest-root --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Preparar MySQL de pruebas
+        env:
+          MYSQL_PWD: test-root
+        run: |
+          for file in database/*.sql; do
+            mysql --default-character-set=utf8mb4 -h 127.0.0.1 -uroot arquident_cpe_test < "$file"
+          done
+      - name: Compilar WAR y ejecutar 33 pruebas
+        env:
+          ARQ_TEST_DB_URL: 'jdbc:mysql://127.0.0.1:3306/arquident_cpe_test?serverTimezone=America/Lima&useSSL=false&allowPublicKeyRetrieval=true'
+          ARQ_TEST_DB_USER: root
+          ARQ_TEST_DB_PASSWORD: test-root
+        run: mvn -B -ntp verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arquident-war
+          path: target/arquident.war
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultados-junit
+          path: target/surefire-reports/
