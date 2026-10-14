@@ -1,0 +1,13 @@
+/target/
+/.idea/
+/.env
+/.env.*
+!/.env.example
+/config/local.ps1
+/config/local.*
+/.runtime/
+/backups/
+/test.txt
+/nbproject/private/
+*.log
+*.sql.bak
